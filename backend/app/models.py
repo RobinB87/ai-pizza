@@ -8,6 +8,7 @@ class PizzeriaBase(SQLModel):
     address: str
     rating: float | None = None
     google_maps_url: str | None = None
+    review: str | None = None
 
 
 class Pizzeria(PizzeriaBase, table=True):
