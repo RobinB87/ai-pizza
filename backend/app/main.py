@@ -1,38 +1,48 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
-from app.models import Pizzeria
+from fastapi import Depends, FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from app.database import create_db_and_tables, get_session
+from app.models import Pizzeria, PizzeriaCreate, PizzeriaRead
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_db_and_tables()
+    yield
+
 
 app = FastAPI(
     title="AI Pizza API",
     description="API for tracking pizzerias visited in Berlin",
     version="0.1.0",
+    lifespan=lifespan,
 )
-
-# In-memory storage for pizzerias (will be replaced with a database later)
-pizzerias_db: list[Pizzeria] = [
-    Pizzeria(
-        id=1,
-        name="Standard Serious Pizza",
-        address="Skalitzer Str. 42, 10999 Berlin",
-        rating=4.5,
-        google_maps_url="https://maps.google.com/?q=Standard+Serious+Pizza+Berlin",
-    ),
-    Pizzeria(
-        id=2,
-        name="Gazzo",
-        address="Hobrechtstraße 57, 12047 Berlin",
-        rating=4.7,
-        google_maps_url="https://maps.google.com/?q=Gazzo+Berlin",
-    ),
-]
 
 
 @app.get("/")
-def read_root():
+async def read_root():
     return {"message": "Welcome to AI Pizza API"}
 
 
-@app.get("/pizzerias", response_model=list[Pizzeria])
-def get_all_pizzerias():
+@app.get("/pizzerias", response_model=list[PizzeriaRead])
+async def get_all_pizzerias(session: AsyncSession = Depends(get_session)):
     """Get all pizzerias."""
-    return pizzerias_db
+    result = await session.execute(select(Pizzeria))
+    pizzerias = result.scalars().all()
+    return pizzerias
+
+
+@app.post("/pizzerias", response_model=PizzeriaRead, status_code=201)
+async def create_pizzeria(
+    pizzeria: PizzeriaCreate,
+    session: AsyncSession = Depends(get_session),
+):
+    """Create a new pizzeria."""
+    db_pizzeria = Pizzeria.model_validate(pizzeria)
+    session.add(db_pizzeria)
+    await session.commit()
+    await session.refresh(db_pizzeria)
+    return db_pizzeria
